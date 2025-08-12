@@ -1,6 +1,6 @@
 variable "source_ami" {
   type    = string
-  default = "" # Will come from GitHub variable
+  default = "" 
 }
 
 source "amazon-ebs" "nginx" {
