@@ -1,0 +1,66 @@
+name: Build AMI with Packer
+
+on:
+  push:
+    branches:
+      - '*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ap-south-1
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+
+      - name: Set up Packer
+        uses: hashicorp/setup-packer@v2
+        with:
+          version: latest
+
+      - name: Install Packer AWS plugin
+        run: packer plugins install github.com/hashicorp/amazon
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Build AMI and Launch EC2 instance
+        run: |
+          echo "Building AMI from base AMI: ${{ vars.SOURCE_AMI_ID }}"
+          RAW_OUTPUT=$(packer build -machine-readable \
+            -var "source_ami=${{ vars.SOURCE_AMI_ID }}" \
+            -var "region=$AWS_REGION" \
+            packer/template.pkr.hcl)
+      
+          echo "$RAW_OUTPUT" 
+      
+          AMI_ID=$(echo "$RAW_OUTPUT" | grep 'artifact,0,id' | cut -d',' -f6 | cut -d':' -f2)
+      
+          if [ -z "$AMI_ID" ]; then
+            echo " ERROR: No AMI ID found. Check Packer output above."
+            exit 1
+          fi
+      
+          echo "Built AMI: $AMI_ID"
+      
+          INSTANCE_ID=$(aws ec2 run-instances \
+            --image-id "$AMI_ID" \
+            --instance-type t2.micro \
+            --region "$AWS_REGION" \
+            --query "Instances[0].InstanceId" \
+            --output text)
+          echo "Launched instance: $INSTANCE_ID"
+      
+          echo "AMI_ID=$AMI_ID" >> $GITHUB_ENV
+          echo "INSTANCE_ID=$INSTANCE_ID" >> $GITHUB_ENV
+
+      - name: Validate Nginx
+        run: |
+          echo "Waiting 5 minutes for server to fully initialize..."
+          sleep 300
+          bash scripts/validate_and_cleanup.sh $INSTANCE_ID $AWS_REGION
