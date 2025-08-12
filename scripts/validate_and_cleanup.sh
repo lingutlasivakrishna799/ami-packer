@@ -16,9 +16,9 @@ sleep 30
 
 echo "Curling Nginx..."
 if curl -s --connect-timeout 5 "http://$PUBLIC_IP" | grep -qi "nginx"; then
-  echo "✅ Nginx is running!"
+  echo "Nginx is running!"
 else
-  echo "❌ Nginx is NOT running."
+  echo "Nginx is NOT running."
   exit 1
 fi
 
